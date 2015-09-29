@@ -1,0 +1,39 @@
+{
+  "name": "phantom-lambda-http-check",
+  "version": "0.0.1",
+  "description": "The bare minimum for a phantomjs app running on Amazon Lambda.",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/rebelmail/node-lambda-template.git"
+  },
+  "author": "motdotla",
+  "license": "isc",
+  "bugs": {
+    "url": "https://github.com/rebelmail/node-lambda-template/issues"
+  },
+  "homepage": "https://github.com/rebelmail/node-lambda-template",
+  "dependencies": {
+    "aws-sdk": "^2.1.39",
+    "dotenv": "^1.2.0",
+    "mailcomposer": "^1.1.0",
+    "node-lambda": "^0.6.1"
+  },
+  "devDependencies": {
+    "aws-sdk": "^2.1.39",
+    "dotenv": "^1.2.0",
+    "mailcomposer": "^1.1.0",
+    "node-lambda": "^0.6.1",
+    "phantomjs": "^1.9.17"
+  },
+  "scripts": {
+    "setup": "node-lambda setup",
+    "start": "node-lambda run",
+    "deploy": "node-lambda deploy"
+  },
+  "keywords": [
+    "phantomjs",
+    "aws",
+    "lambda"
+  ]
+}

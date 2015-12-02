@@ -1,5 +1,14 @@
-var TARGET_URL = "https://google.com";
-var CAPTURE_FILE = '/tmp/error.png';
+var system = require('system');
+var args = system.args;
+
+if (args.length !== 3) {
+  console.log('Try to pass some arguments when invoking this script!');
+	phantom.exit();
+}
+
+var TARGET_URL = args[1];
+var CAPTURE_FILE = args[2];
+
 
 var isError = false;
 

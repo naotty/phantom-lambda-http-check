@@ -2,36 +2,127 @@
 exports.handler = function( event, context ) {
   "use strict";
 
-  var SERVICE_NAME = "google";
-
-  var CAPTURE_FILE = '/tmp/error.png';
-  var SES_FROM = "hoge@example.com";
-  var SES_TO = "hoge@example.com";
-
   var path = require('path'),
       fs = require('fs'),
       http = require('http'),
       phantomDownloadPath = "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-1.9.8-linux-x86_64-symbols.tar.bz2",
-      childProcess = require('child_process');
+      childProcess = require('child_process'),
+      env = require('node-env-file'),
+      request = require('request'),
+      Promise = require("bluebird"),
+      aws = require('aws-sdk'),
+      mailcomposer = require('mailcomposer');
 
 
-  var dotenv = require('dotenv').load();
-  var aws = require('aws-sdk');
-  var mailcomposer = require('mailcomposer');
+  env(__dirname + '/.env', {overwrite: true});
 
-  // dotenv is undefined at production.
-  // so need to set ses policy to iam-role.
+  var constParams = {
+    SERVICE_NAME: process.env.SERVICE_NAME,
+    TARGET_URL: process.env.TARGET_URL,
+    CAPTURE_FILE: process.env.CAPTURE_FILE,
+    SES_FROM: process.env.SES_FROM,
+    SES_TO: process.env.SES_TO,
+
+    AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+    AWS_REGION: process.env.AWS_REGION,
+
+    CHATWORK_TO_1: process.env.CHATWORK_TO_1,
+    CHATWORK_TO_2: process.env.CHATWORK_TO_2,
+    CHATWORK_ROOMID: process.env.CHATWORK_ROOMID,
+    CHATWORK_TOKEN: process.env.CHATWORK_TOKEN
+  };
+
   var ses = new aws.SES({
     apiVersion: '2010-12-01',
-    accessKeyId: dotenv.AWS_ACCESS_KEY_ID,
-    secretAccessKey: dotenv.AWS_SECRET_ACCESS_KEY,
-    region: dotenv.AWS_REGION,
+    accessKeyId: constParams.AWS_ACCESS_KEY_ID,
+    secretAccessKey: constParams.AWS_SECRET_ACCESS_KEY,
+    region: constParams.AWS_REGION,
     sslEnabled: true
   });
+
+  var mailOptions = {
+     from: constParams.SES_FROM,
+     to: constParams.SES_TO,
+     subject: 'Watch Service Notification(' + constParams.SERVICE_NAME + ')',
+     text: 'Your service is down..?',
+     attachments: [
+       {
+          filename: 'capture.png',
+          path: constParams.CAPTURE_FILE
+       }
+     ]
+  };
+
+  function sendMail() {
+    console.log("sendMail----------");
+    return new Promise(function(resolve) {
+      var mail = mailcomposer(mailOptions);
+      mail.build(function(err, message){
+
+        var rawMsg = {RawMessage: {Data: message}};
+        ses.sendRawEmail(rawMsg, function(err, data) {
+          if(err) {
+            console.log(err, err.stack);
+          } else {
+            console.log(data);
+          }
+
+          fs.unlink(constParams.CAPTURE_FILE, function(err) {
+            if (err) {
+              console.log(err, err,stack);
+            }
+            resolve();
+          });
+
+        });
+
+      });
+
+    });
+  }
+
+
+  function chatworkNotification() {
+    console.log("chatworkNotification----------");
+    return new Promise(function(resolve) {
+      if (constParams.CHATWORK_TOKEN.length === 0) {
+        resolve();
+      }
+
+      var msg = constParams.CHATWORK_TO_1 + "\n";
+
+      if (constParams.CHATWORK_TO_2.length != 0) {
+        msg += constParams.CHATWORK_TO_2 + "\n";
+      }
+
+      msg += constParams.SERVICE_NAME + " is down..?";
+
+      var options = {
+        url: 'https://api.chatwork.com/v1/rooms/' + constParams.CHATWORK_ROOMID +'/messages',
+        headers: {
+          'X-ChatWorkToken': constParams.CHATWORK_TOKEN
+        },
+        form : {body : msg},
+        useQuerystring: true
+      };
+
+      request.post(options, function (err, res, body) {
+        if (!err && res.statusCode == 200) {
+          console.log(body);
+        }else{
+          console.log(err, err);
+        }
+        resolve();
+      });
+
+    });
+  }
 
 
   // Get the path to the phantomjs application
   function getPhantomFileName(callback) {
+    // var nodeModulesPath = path.join(__dirname, 'node_modules');
     var nodeModulesPath = path.join(__dirname, 'node_modules', 'phantomjs');
     fs.exists(nodeModulesPath, function(exists) {
       if (exists) {
@@ -48,7 +139,9 @@ exports.handler = function( event, context ) {
     getPhantomFileName(function(phantomJsPath) {
 
       var childArgs = [
-        path.join(__dirname, 'phantomjs-script.js')
+        path.join(__dirname, 'phantomjs-script.js'),
+        constParams.TARGET_URL,
+        constParams.CAPTURE_FILE
       ];
 
       console.log('Calling phantom: ', phantomJsPath, childArgs);
@@ -65,44 +158,16 @@ exports.handler = function( event, context ) {
       ls.on('exit', function (code) {
         console.log('child process exited with code ' + code);
 
-        fs.exists(CAPTURE_FILE, function(exists) {
+        fs.exists(constParams.CAPTURE_FILE, function(exists) {
           if (exists) {
             console.log('file exists!!');
 
-            var mailOptions = {
-               from: SES_FROM,
-               to: SES_TO,
-               subject: 'Watch Service Notification(' + SERVICE_NAME + ')',
-               text: 'Your service is down..',
-               attachments: [
-                 {
-                    filename: 'error.png',
-                    path: CAPTURE_FILE
-                 }
-               ]
-            };
-            var mail = mailcomposer(mailOptions);
-            mail.build(function(err, message){
-
-              ses.sendRawEmail({RawMessage: {Data: message}}, function(err, data) {
-                if(err) {
-                  // error handling
-                  console.log(err, err.stack);
-                } else {
-                   //  context.done(null, data);
-                    console.log(data);
-                }
-
-                fs.unlink(CAPTURE_FILE, function(err) {
-                  if (err) {
-                    console.log(err, err,stack);
-                  }
-                  callback();
-                });
-
+            sendMail()
+              .then(chatworkNotification())
+              .then(function() {
+                console.log("exit----------");
+                callback();
               });
-
-            });
 
           } else {
             console.log('file unexists.....');
